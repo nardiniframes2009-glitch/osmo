@@ -1,0 +1,703 @@
+<!doctype html>
+<html lang="it">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, user-scalable=no">
+<meta name="theme-color" content="#0f1115">
+<title>Osmo Remote</title>
+<style>
+  :root {
+    --bg: #0f1115; --panel: #181b22; --panel2: #20242d; --line: #2c313c;
+    --text: #e8eaef; --muted: #8b93a3; --accent: #4f9cff; --ok: #3ccf7a;
+    --warn: #ffb547; --bad: #ff5d5d; --run: #2a3d5c;
+    --c-rotate: #4f9cff; --c-wait: #b58cff; --c-home: #3ccf7a; --c-repeat: #ffb547;
+  }
+  * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+  html, body { margin: 0; background: var(--bg); color: var(--text);
+    font: 16px/1.35 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; }
+  body { padding: env(safe-area-inset-top) 0 calc(76px + env(safe-area-inset-bottom)); }
+  button { font: inherit; color: inherit; background: var(--panel2); border: 1px solid var(--line);
+    border-radius: 10px; padding: 10px 14px; cursor: pointer; }
+  button:active { transform: scale(.97); }
+  button.primary { background: var(--accent); border-color: var(--accent); color: #fff; font-weight: 600; }
+  button.danger { background: var(--bad); border-color: var(--bad); color: #fff; font-weight: 600; }
+  button:disabled { opacity: .45; }
+  input, select { font: inherit; color: var(--text); background: var(--bg); border: 1px solid var(--line);
+    border-radius: 8px; padding: 6px 8px; }
+  input[type=number] { width: 72px; text-align: center; }
+  input[type=range] { accent-color: var(--accent); }
+
+  header { position: sticky; top: 0; z-index: 5; background: var(--bg); border-bottom: 1px solid var(--line);
+    padding: 10px 16px; display: flex; align-items: center; gap: 10px; }
+  .dot { width: 10px; height: 10px; border-radius: 50%; background: var(--bad); flex: none; }
+  .dot.on { background: var(--ok); } .dot.wait { background: var(--warn); }
+  #status { flex: 1; min-width: 0; font-size: 14px; color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  #status b { color: var(--text); font-weight: 600; }
+
+  .readout { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; padding: 12px 16px 0; }
+  .readout div { background: var(--panel); border-radius: 12px; padding: 8px 10px; text-align: center; }
+  .readout small { display: block; color: var(--muted); font-size: 12px; }
+  .readout span { font-size: 20px; font-variant-numeric: tabular-nums; font-weight: 600; }
+
+  nav { display: flex; gap: 8px; padding: 12px 16px 0; }
+  nav button { flex: 1; }
+  nav button.sel { background: var(--accent); border-color: var(--accent); color: #fff; font-weight: 600; }
+  section { padding: 12px 16px; }
+  .hidden { display: none !important; }
+
+  /* Live */
+  .pads { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-top: 4px; }
+  .padwrap { text-align: center; color: var(--muted); font-size: 13px; }
+  .pad { position: relative; aspect-ratio: 1; border-radius: 50%; background: var(--panel);
+    border: 1px solid var(--line); touch-action: none; margin-bottom: 6px; }
+  .pad::before { content: ""; position: absolute; background: var(--line); border-radius: 3px; }
+  .pad.x::before { left: 12%; right: 12%; top: calc(50% - 3px); height: 6px; }
+  .pad.y::before { top: 12%; bottom: 12%; left: calc(50% - 3px); width: 6px; }
+  .knob { position: absolute; left: 50%; top: 50%; width: 38%; aspect-ratio: 1; margin: -19% 0 0 -19%;
+    border-radius: 50%; background: var(--accent); box-shadow: 0 4px 14px rgba(0,0,0,.5); pointer-events: none; }
+  .row { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+  .card { background: var(--panel); border-radius: 14px; padding: 12px; margin-top: 12px; }
+  .card h3 { margin: 0 0 8px; font-size: 14px; color: var(--muted); font-weight: 600; }
+  .grow { flex: 1; }
+
+  /* Automazioni */
+  .lib { display: flex; gap: 8px; flex-wrap: wrap; }
+  .lib select, .lib input { flex: 1; min-width: 0; }
+  .meta { color: var(--muted); font-size: 13px; margin-top: 8px; }
+  .blk { background: var(--panel); border-radius: 12px; margin-top: 8px; border-left: 5px solid var(--c-rotate);
+    padding: 8px 8px 8px 10px; }
+  .blk.t-wait { border-left-color: var(--c-wait); } .blk.t-home { border-left-color: var(--c-home); }
+  .blk.t-repeat { border-left-color: var(--c-repeat); }
+  .blk.run { background: var(--run); box-shadow: 0 0 0 2px var(--accent) inset; }
+  .blk .head { display: flex; align-items: center; gap: 6px; margin-bottom: 6px; }
+  .blk .kind { flex: 1; font-size: 12px; font-weight: 700; letter-spacing: .04em; text-transform: uppercase; color: var(--c-rotate); }
+  .blk.t-wait .kind { color: var(--c-wait); } .blk.t-home .kind { color: var(--c-home); } .blk.t-repeat .kind { color: var(--c-repeat); }
+  .blk .body { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; }
+  .blk .tools { display: flex; gap: 4px; flex: none; }
+  .blk .tools button { padding: 4px 8px; font-size: 13px; border-radius: 8px; }
+  .blk .speed { display: flex; align-items: center; gap: 6px; width: 100%; color: var(--muted); font-size: 14px; }
+  .blk .speed input { flex: 1; }
+  .kids { margin: 6px 0 2px 4px; padding-left: 8px; border-left: 2px dashed var(--line); }
+  .add { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px; }
+  .add button { padding: 6px 10px; font-size: 14px; border-style: dashed; background: transparent; }
+  .locked .blk, .locked .add { pointer-events: none; opacity: .85; }
+  .locked .add { display: none; }
+
+  .runbar { position: fixed; left: 0; right: 0; bottom: 0; z-index: 6; background: var(--panel);
+    border-top: 1px solid var(--line); padding: 10px 16px calc(10px + env(safe-area-inset-bottom));
+    display: flex; gap: 10px; align-items: center; }
+  .runbar .info { flex: 1; font-size: 14px; color: var(--muted); min-width: 0; }
+  .runbar button { min-width: 120px; }
+
+  dialog { background: var(--panel); color: var(--text); border: 1px solid var(--line); border-radius: 14px;
+    width: min(560px, calc(100vw - 32px)); }
+  dialog::backdrop { background: rgba(0,0,0,.6); }
+  dialog textarea { width: 100%; height: 220px; background: var(--bg); color: var(--text);
+    border: 1px solid var(--line); border-radius: 8px; font: 12px ui-monospace, Menlo, monospace; }
+  #log { font: 12px ui-monospace, Menlo, monospace; color: var(--muted); white-space: pre-wrap; max-height: 140px; overflow: auto; }
+</style>
+</head>
+<body>
+
+<header>
+  <span class="dot" id="dot"></span>
+  <div id="status">Non connesso</div>
+  <button class="primary" id="connectBtn">Connetti</button>
+</header>
+
+<div class="readout">
+  <div><small>Orizzontale</small><span id="rYaw">—</span></div>
+  <div><small>Verticale</small><span id="rPitch">—</span></div>
+  <div><small>Batteria</small><span id="rBat">—</span></div>
+</div>
+
+<nav>
+  <button id="tabLive" class="sel">Controllo live</button>
+  <button id="tabAuto">Automazioni</button>
+</nav>
+
+<!-- ============================== LIVE ============================== -->
+<section id="live">
+  <div class="pads">
+    <div class="padwrap"><div class="pad x" id="padPan"><div class="knob"></div></div>Destra / sinistra</div>
+    <div class="padwrap"><div class="pad y" id="padTilt"><div class="knob"></div></div>Su / giù</div>
+  </div>
+  <div class="card">
+    <h3>Velocità massima joystick</h3>
+    <div class="row"><input type="range" id="liveSpeed" min="1" max="10" value="5" class="grow"><b id="liveSpeedLbl">5</b></div>
+  </div>
+  <div class="card row">
+    <button id="btnCenter" class="grow">Centra</button>
+    <button id="btnStop" class="grow">Ferma</button>
+  </div>
+</section>
+
+<!-- ============================ AUTOMAZIONI ============================ -->
+<section id="auto" class="hidden">
+  <div class="lib">
+    <select id="autoSel"></select>
+    <button id="btnNew">Nuova</button>
+  </div>
+  <div class="lib" style="margin-top:8px">
+    <input id="autoName" placeholder="Nome automazione">
+    <button id="btnMore">⋯</button>
+  </div>
+  <div class="meta" id="autoMeta"></div>
+  <div id="editor"></div>
+</section>
+
+<div class="runbar" id="runbar">
+  <div class="info" id="runInfo">Pronto</div>
+  <button class="primary" id="btnRun">▶ Esegui</button>
+</div>
+
+<dialog id="dlgMore">
+  <h3 style="margin-top:0">Automazione</h3>
+  <div class="row">
+    <button id="btnDup">Duplica</button>
+    <button id="btnExport">Esporta</button>
+    <button id="btnImport">Importa</button>
+    <button id="btnDelete" class="danger">Elimina</button>
+  </div>
+  <p class="meta" id="ioHint"></p>
+  <textarea id="ioText" class="hidden"></textarea>
+  <div class="row" style="justify-content:flex-end;margin-top:10px">
+    <button id="btnIoApply" class="primary hidden">Importa questo testo</button>
+    <button id="btnClose">Chiudi</button>
+  </div>
+  <h3>Registro</h3>
+  <div id="log"></div>
+</dialog>
+
+<script>
+"use strict";
+/* =====================================================================
+ * Protocollo DJI Osmo Mobile 2 via BLE (da github.com/alkersan/om-research,
+ * verificato sul gimbal OSMOmobile 2 l'8/11/2026):
+ *   servizio FFF0, scrittura FFF5, notifiche FFF4, pacchetti DUML.
+ *   Rotazione: cmd_set 0x04, cmd 0x0C (velocità) / 0x14 (angolo)
+ *   payload yaw, roll, pitch (int16, 0.1°) + modo (0x04 rel, 0x05 ass, 0x80 vel) + tempo (0.1 s)
+ *   Segni misurati: yaw + = destra; pitch + = SU in velocità ma GIÙ negli angoli.
+ *   Posizione: notifica cmd_set 0x04 cmd 0x05 (~100 Hz): pitch (+ = giù), roll, yaw (+ = destra).
+ *   Batteria: cmd_set 0x05 cmd 0x06, primo byte = %.
+ * In questa app pitch + significa sempre SU.
+ * ===================================================================== */
+const SVC    = "0000fff0-0000-1000-8000-00805f9b34fb";
+const NOTIFY = "0000fff4-0000-1000-8000-00805f9b34fb";
+const WRITE  = "0000fff5-0000-1000-8000-00805f9b34fb";
+const MODE = { REL: 0x04, ABS: 0x05, SPEED: 0x80 };
+// Livelli di velocità 1–10 in gradi al secondo
+const LEVEL_DPS = [0, 3, 5, 8, 12, 17, 24, 32, 42, 55, 70];
+
+function crc8(bytes) {
+  let c = 0x77;
+  for (const b of bytes) { c ^= b; for (let i = 0; i < 8; i++) c = (c & 1) ? (c >>> 1) ^ 0x8c : c >>> 1; }
+  return c;
+}
+function crc16(bytes) {
+  let c = 0x3692;
+  for (const b of bytes) { c ^= b; for (let i = 0; i < 8; i++) c = (c & 1) ? (c >>> 1) ^ 0x8408 : c >>> 1; }
+  return c;
+}
+let seq = 1;
+function duml(cmdSet, cmd, payload) {
+  const len = 13 + payload.length;
+  const p = [0x55, len & 0xff, ((len >> 8) & 0x03) | 0x04];
+  p.push(crc8(p));
+  p.push(0x02, 0x04, seq & 0xff, (seq >> 8) & 0xff, 0x00, cmdSet, cmd, ...payload);
+  seq = (seq + 1) & 0xffff;
+  const c = crc16(p);
+  p.push(c & 0xff, (c >> 8) & 0xff);
+  return new Uint8Array(p);
+}
+function i16(v) { v = Math.max(-32768, Math.min(32767, Math.round(v))); return [v & 0xff, (v >> 8) & 0xff]; }
+function rotatePacket(yaw, pitchUp, mode, timeS) {
+  const pitchRaw = mode === MODE.SPEED ? pitchUp : -pitchUp;
+  const t = Math.max(0, Math.min(255, Math.round(timeS * 10)));
+  return duml(0x04, mode === MODE.SPEED ? 0x0c : 0x14,
+    [...i16(yaw * 10), ...i16(0), ...i16(pitchRaw * 10), mode, t]);
+}
+const hex = (a) => Array.from(a, (b) => b.toString(16).padStart(2, "0")).join(" ");
+
+class DumlParser {
+  constructor() { this.buf = []; }
+  feed(bytes) {
+    for (const b of bytes) this.buf.push(b);
+    const out = [];
+    while (this.buf.length) {
+      if (this.buf[0] !== 0x55) {
+        const i = this.buf.indexOf(0x55);
+        if (i < 0) { this.buf = []; break; }
+        this.buf = this.buf.slice(i); continue;
+      }
+      if (this.buf.length < 4) break;
+      if (crc8(this.buf.slice(0, 3)) !== this.buf[3]) { this.buf.shift(); continue; }
+      const n = (this.buf[1] | (this.buf[2] << 8)) & 0x3ff;
+      if (n < 13) { this.buf.shift(); continue; }
+      if (this.buf.length < n) break;
+      const p = this.buf.slice(0, n);
+      this.buf = this.buf.slice(n);
+      out.push({ set: p[9], cmd: p[10], pl: p.slice(11, n - 2) });
+    }
+    return out;
+  }
+}
+const s16 = (a, i) => { const v = a[i] | (a[i + 1] << 8); return v & 0x8000 ? v - 0x10000 : v; };
+
+/* ============================== Gimbal ============================== */
+const G = {
+  device: null, wc: null, connected: false, demo: false,
+  yaw: null, pitch: null, battery: null,
+  parser: new DumlParser(), chain: Promise.resolve(), inflight: 0,
+};
+
+function log(msg) {
+  const el = document.getElementById("log");
+  el.textContent = new Date().toLocaleTimeString() + "  " + msg + "\n" + el.textContent.slice(0, 4000);
+}
+
+async function connect() {
+  if (!navigator.bluetooth) {
+    if (confirm("Questo browser non supporta il Bluetooth.\nSu iPhone apri la pagina con l'app Bluefy.\n\nVuoi provare l'app in modalità demo (gimbal simulato)?")) startDemo();
+    return;
+  }
+  try {
+    setStatus("wait", "Scegli il gimbal…");
+    const device = await navigator.bluetooth.requestDevice({
+      filters: [{ services: [SVC] }, { namePrefix: "OSMO" }, { namePrefix: "Osmo" }],
+      optionalServices: [SVC],
+    });
+    G.device = device;
+    device.addEventListener("gattserverdisconnected", onDisconnected);
+    await openGatt();
+  } catch (e) {
+    log("Connessione fallita: " + (e.message || e));
+    setStatus(G.connected ? "on" : "off", G.connected ? null : "Non connesso");
+  }
+}
+
+async function openGatt() {
+  setStatus("wait", "Connessione a " + (G.device.name || "gimbal") + "…");
+  const server = await G.device.gatt.connect();
+  const svc = await server.getPrimaryService(SVC);
+  const nc = await svc.getCharacteristic(NOTIFY);
+  G.wc = await svc.getCharacteristic(WRITE);
+  nc.addEventListener("characteristicvaluechanged", (e) => {
+    const v = e.target.value;
+    onBytes(new Uint8Array(v.buffer, v.byteOffset, v.byteLength));
+  });
+  await nc.startNotifications();
+  G.connected = true;
+  G.parser = new DumlParser();
+  log("Connesso a " + (G.device.name || "gimbal"));
+  setStatus("on");
+}
+
+let reconnecting = false;
+async function onDisconnected() {
+  G.connected = false;
+  setStatus("off", "Disconnesso");
+  log("Disconnesso");
+  if (runner.active) stopRun("Connessione persa");
+  if (reconnecting || !G.device) return;
+  reconnecting = true;
+  for (let i = 1; i <= 5 && !G.connected; i++) {
+    setStatus("wait", `Riconnessione (${i}/5)…`);
+    try { await openGatt(); } catch (e) { await sleep(1500); }
+  }
+  reconnecting = false;
+  if (!G.connected) setStatus("off", "Disconnesso — premi Connetti");
+}
+
+function onBytes(bytes) {
+  for (const m of G.parser.feed(bytes)) {
+    if (m.set === 0x04 && m.cmd === 0x05 && m.pl.length >= 6) {
+      onAttitude(s16(m.pl, 4) / 10, -s16(m.pl, 0) / 10);
+    } else if (m.set === 0x05 && m.cmd === 0x06 && m.pl.length) {
+      if (G.battery !== m.pl[0]) { G.battery = m.pl[0]; document.getElementById("rBat").textContent = G.battery + "%"; setStatus("on"); }
+    }
+  }
+}
+
+let lastDraw = 0;
+function onAttitude(yaw, pitch) {
+  G.yaw = yaw; G.pitch = pitch;
+  const now = performance.now();
+  if (now - lastDraw > 80) {
+    lastDraw = now;
+    document.getElementById("rYaw").textContent = fmtDeg(yaw);
+    document.getElementById("rPitch").textContent = fmtDeg(pitch);
+  }
+}
+const fmtDeg = (v) => (v > 0 ? "+" : "") + v.toFixed(1) + "°";
+
+async function rawWrite(pkt) {
+  for (let i = 0; i < pkt.length; i += 20) {
+    const chunk = pkt.slice(i, i + 20);
+    if (G.wc.properties.writeWithoutResponse) await G.wc.writeValueWithoutResponse(chunk);
+    else await G.wc.writeValue(chunk);
+  }
+}
+// droppable: i comandi dei joystick vengono saltati se il precedente non è ancora partito
+function send(pkt, droppable = false) {
+  if (!G.connected || !G.wc) return Promise.resolve();
+  if (droppable && G.inflight > 0) return Promise.resolve();
+  G.inflight++;
+  G.chain = G.chain.then(() => rawWrite(pkt))
+    .catch((e) => log("Errore scrittura: " + (e.message || e)))
+    .finally(() => { G.inflight--; });
+  return G.chain;
+}
+
+// API di alto livello (gradi, gradi/s, secondi; pitch + = su)
+const gimbal = {
+  speed(yawDps, pitchDps, timeS = 0.3, droppable = true) {
+    if (G.demo) return sim.cmd("speed", yawDps, pitchDps, timeS);
+    return send(rotatePacket(yawDps, pitchDps, MODE.SPEED, timeS), droppable);
+  },
+  async stop() {
+    for (let i = 0; i < 2; i++) { await gimbal.speed(0, 0, 0.1, false); await sleep(40); }
+  },
+  rel(dyaw, dpitch, timeS) {
+    if (G.demo) return sim.cmd("rel", dyaw, dpitch, timeS);
+    return send(rotatePacket(dyaw, dpitch, MODE.REL, timeS));
+  },
+  abs(yaw, pitch, timeS) {
+    if (G.demo) return sim.cmd("abs", yaw, pitch, timeS);
+    return send(rotatePacket(yaw, pitch, MODE.ABS, timeS));
+  },
+};
+
+/* ======================== Demo (gimbal simulato) ======================== */
+const sim = {
+  yaw: 0, pitch: 0, vy: 0, vp: 0, until: 0, move: null,
+  cmd(kind, a, b, t) {
+    const now = performance.now();
+    if (kind === "speed") { this.vy = a; this.vp = b; this.until = now + t * 1000; this.move = null; }
+    else {
+      const ty = kind === "abs" ? a : this.yaw + a, tp = kind === "abs" ? b : this.pitch + b;
+      this.move = { y0: this.yaw, p0: this.pitch, ty, tp, t0: now, dur: Math.max(0.05, t) * 1000 };
+    }
+    return Promise.resolve();
+  },
+  tick() {
+    const now = performance.now();
+    if (this.move) {
+      const k = Math.min(1, (now - this.move.t0) / this.move.dur);
+      this.yaw = this.move.y0 + (this.move.ty - this.move.y0) * k;
+      this.pitch = this.move.p0 + (this.move.tp - this.move.p0) * k;
+      if (k >= 1) this.move = null;
+    } else if (now < this.until) { this.yaw += this.vy * 0.02; this.pitch += this.vp * 0.02; }
+    this.pitch = Math.max(-90, Math.min(60, this.pitch));
+    onAttitude(this.yaw, this.pitch);
+  },
+};
+function startDemo() {
+  G.demo = true; G.connected = true; G.battery = 100;
+  document.getElementById("rBat").textContent = "demo";
+  setInterval(() => sim.tick(), 20);
+  setStatus("on");
+  log("Modalità demo");
+}
+
+/* ============================== UI comune ============================== */
+const $ = (id) => document.getElementById(id);
+function setStatus(state, text) {
+  $("dot").className = "dot" + (state === "on" ? " on" : state === "wait" ? " wait" : "");
+  if (state === "on" && !text) {
+    const name = G.demo ? "Gimbal simulato" : (G.device && G.device.name) || "Gimbal";
+    $("status").innerHTML = "<b></b>"; $("status").firstChild.textContent = name;
+  } else $("status").textContent = text || "";
+  $("connectBtn").textContent = G.connected ? "Connesso" : "Connetti";
+  $("connectBtn").disabled = G.connected;
+}
+const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+
+$("connectBtn").onclick = connect;
+$("tabLive").onclick = () => showTab("live");
+$("tabAuto").onclick = () => showTab("auto");
+function showTab(t) {
+  $("live").classList.toggle("hidden", t !== "live");
+  $("auto").classList.toggle("hidden", t !== "auto");
+  $("tabLive").classList.toggle("sel", t === "live");
+  $("tabAuto").classList.toggle("sel", t === "auto");
+  $("runbar").classList.toggle("hidden", t !== "auto" && !runner.active);
+  store.set("tab", t);
+}
+
+/* ============================== Live ============================== */
+const joy = { pan: 0, tilt: 0, active: false };
+function makePad(el, axis, onChange) {
+  const knob = el.querySelector(".knob");
+  let pid = null;
+  const update = (e) => {
+    const r = el.getBoundingClientRect();
+    const R = r.width / 2 * 0.62;
+    let dx = e.clientX - (r.left + r.width / 2), dy = e.clientY - (r.top + r.height / 2);
+    if (axis === "x") dy = 0; else dx = 0;
+    const d = Math.hypot(dx, dy); if (d > R) { dx *= R / d; dy *= R / d; }
+    knob.style.transform = `translate(${dx}px, ${dy}px)`;
+    onChange(axis === "x" ? dx / R : -dy / R);
+  };
+  const end = () => { pid = null; knob.style.transform = ""; onChange(0); };
+  el.addEventListener("pointerdown", (e) => { pid = e.pointerId; el.setPointerCapture(pid); update(e); });
+  el.addEventListener("pointermove", (e) => { if (e.pointerId === pid) update(e); });
+  el.addEventListener("pointerup", end); el.addEventListener("pointercancel", end);
+}
+makePad($("padPan"), "x", (v) => { joy.pan = v; });
+makePad($("padTilt"), "y", (v) => { joy.tilt = v; });
+
+$("liveSpeed").oninput = () => { $("liveSpeedLbl").textContent = $("liveSpeed").value; store.set("liveSpeed", $("liveSpeed").value); };
+const curve = (v) => Math.sign(v) * v * v;  // più precisione vicino al centro
+setInterval(() => {
+  if (runner.active) return;
+  const max = LEVEL_DPS[+$("liveSpeed").value];
+  const y = curve(joy.pan) * max, p = curve(joy.tilt) * max * 0.7;
+  const moving = Math.abs(y) > 0.3 || Math.abs(p) > 0.3;
+  if (moving) { joy.active = true; gimbal.speed(y, p, 0.3); }
+  else if (joy.active) { joy.active = false; gimbal.stop(); }
+}, 100);
+$("btnCenter").onclick = () => gimbal.abs(0, 0, 1.5);
+$("btnStop").onclick = () => gimbal.stop();
+
+/* ============================== Archivio ============================== */
+const store = {
+  get(k, d) { try { const v = localStorage.getItem("osmo." + k); return v == null ? d : JSON.parse(v); } catch { return d; } },
+  set(k, v) { try { localStorage.setItem("osmo." + k, JSON.stringify(v)); } catch {} },
+};
+const uid = () => Math.random().toString(36).slice(2, 10);
+const LABEL = { rotate: "Ruota", wait: "Attendi", home: "Torna all'inizio", repeat: "Ripeti" };
+const DIRS = { right: "destra", left: "sinistra", up: "su", down: "giù" };
+
+function newBlock(type) {
+  const b = { id: uid(), type };
+  if (type === "wait") b.sec = 3;
+  if (type === "rotate") { b.dir = "right"; b.deg = 45; b.speed = 5; }
+  if (type === "repeat") { b.times = 2; b.children = []; }
+  return b;
+}
+function sample() {
+  const r = newBlock("repeat"); r.times = 2;
+  const a = newBlock("rotate"); a.deg = 60; a.speed = 3;
+  const w = newBlock("wait"); w.sec = 2;
+  const c = newBlock("rotate"); c.dir = "left"; c.deg = 60; c.speed = 3;
+  r.children = [a, w, c];
+  const w0 = newBlock("wait"); w0.sec = 5;
+  return { id: uid(), name: "Esempio: panoramica", blocks: [w0, r, newBlock("home")] };
+}
+let autos = store.get("autos", null);
+if (!Array.isArray(autos) || !autos.length) autos = [sample()];
+let cur = autos.find((a) => a.id === store.get("cur", "")) || autos[0];
+let saveTimer = null;
+function save() { clearTimeout(saveTimer); saveTimer = setTimeout(() => { store.set("autos", autos); store.set("cur", cur.id); }, 200); }
+
+function renderLib() {
+  $("autoSel").innerHTML = "";
+  for (const a of autos) {
+    const o = document.createElement("option"); o.value = a.id; o.textContent = a.name || "(senza nome)";
+    o.selected = a.id === cur.id; $("autoSel").appendChild(o);
+  }
+  $("autoName").value = cur.name;
+}
+$("autoSel").onchange = () => { cur = autos.find((a) => a.id === $("autoSel").value); save(); renderAll(); };
+$("autoName").oninput = () => { cur.name = $("autoName").value; save(); $("autoSel").selectedOptions[0].textContent = cur.name || "(senza nome)"; };
+$("btnNew").onclick = () => { cur = { id: uid(), name: "Nuova automazione", blocks: [] }; autos.push(cur); save(); renderAll(); $("autoName").select(); };
+$("btnMore").onclick = () => { $("ioText").classList.add("hidden"); $("btnIoApply").classList.add("hidden"); $("ioHint").textContent = ""; $("dlgMore").showModal(); };
+$("btnClose").onclick = () => $("dlgMore").close();
+$("btnDup").onclick = () => { cur = { ...clone(cur), name: cur.name + " (copia)" }; autos.push(cur); save(); renderAll(); $("dlgMore").close(); };
+$("btnDelete").onclick = () => {
+  if (!confirm(`Eliminare "${cur.name}"?`)) return;
+  autos = autos.filter((a) => a !== cur); if (!autos.length) autos = [{ id: uid(), name: "Nuova automazione", blocks: [] }];
+  cur = autos[0]; save(); renderAll(); $("dlgMore").close();
+};
+$("btnExport").onclick = async () => {
+  const txt = JSON.stringify(autos, null, 1);
+  $("ioText").value = txt; $("ioText").classList.remove("hidden"); $("btnIoApply").classList.add("hidden");
+  try { await navigator.clipboard.writeText(txt); $("ioHint").textContent = "Tutte le automazioni sono state copiate negli appunti. Incollale in Note per conservarle."; }
+  catch { $("ioHint").textContent = "Seleziona tutto il testo qui sotto e copialo (per esempio in Note)."; }
+};
+$("btnImport").onclick = () => {
+  $("ioText").value = ""; $("ioText").classList.remove("hidden"); $("btnIoApply").classList.remove("hidden");
+  $("ioHint").textContent = "Incolla qui il testo esportato in precedenza. Le automazioni verranno aggiunte a quelle esistenti.";
+};
+$("btnIoApply").onclick = () => {
+  try {
+    let data = JSON.parse($("ioText").value); if (!Array.isArray(data)) data = [data];
+    const ok = data.filter((a) => a && Array.isArray(a.blocks)).map((a) => ({ ...clone(a), name: a.name || "Importata" }));
+    if (!ok.length) throw new Error("nessuna automazione trovata");
+    autos.push(...ok); cur = ok[0]; save(); renderAll(); $("dlgMore").close();
+  } catch (e) { $("ioHint").textContent = "Testo non valido: " + e.message; }
+};
+function clone(a) {  // copia profonda con nuovi id
+  const re = (b) => ({ ...b, id: uid(), ...(b.children ? { children: b.children.map(re) } : {}) });
+  return { id: uid(), name: a.name, blocks: (a.blocks || []).map(re) };
+}
+
+/* ============================== Editor ============================== */
+function locate(list, id) {
+  for (let i = 0; i < list.length; i++) {
+    if (list[i].id === id) return [list, i];
+    if (list[i].children) { const r = locate(list[i].children, id); if (r) return r; }
+  }
+  return null;
+}
+const esc = (s) => String(s).replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
+function blockHTML(b) {
+  let body = "";
+  if (b.type === "wait") body = `Attendi <input type="number" inputmode="decimal" min="0" step="0.5" data-f="sec" value="${esc(b.sec)}"> secondi`;
+  if (b.type === "home") body = `Torna alla posizione registrata all'avvio`;
+  if (b.type === "repeat") body = `Ripeti <input type="number" inputmode="numeric" min="1" step="1" data-f="times" value="${esc(b.times)}"> volte`;
+  if (b.type === "rotate") {
+    body = `Ruota <select data-f="dir">${Object.entries(DIRS).map(([k, v]) => `<option value="${k}" ${b.dir === k ? "selected" : ""}>${v}</option>`).join("")}</select>
+      di <input type="number" inputmode="decimal" min="0" step="5" data-f="deg" value="${esc(b.deg)}">°
+      <div class="speed">Velocità <input type="range" min="1" max="10" data-f="speed" value="${esc(b.speed)}"><b>${esc(b.speed)}</b></div>`;
+  }
+  const kids = b.type === "repeat" ? `<div class="kids">${b.children.map(blockHTML).join("")}${addBar(b.id)}</div>` : "";
+  return `<div class="blk t-${b.type}" data-id="${b.id}"><div class="head"><span class="kind">${LABEL[b.type]}</span>
+    <div class="tools"><button data-a="up" aria-label="Sposta su">▲</button><button data-a="down" aria-label="Sposta giù">▼</button><button data-a="dup" aria-label="Duplica">⧉</button><button data-a="del" aria-label="Elimina">✕</button></div></div>
+    <div class="body">${body}</div>${kids}</div>`;
+}
+function addBar(parent) {
+  return `<div class="add" data-parent="${parent || ""}">${Object.keys(LABEL).map((t) => `<button data-add="${t}">+ ${LABEL[t]}</button>`).join("")}</div>`;
+}
+function renderEditor() {
+  $("editor").innerHTML = cur.blocks.map(blockHTML).join("") + addBar("");
+  updateMeta();
+}
+function renderAll() { renderLib(); renderEditor(); }
+
+$("editor").addEventListener("click", (e) => {
+  const add = e.target.closest("[data-add]");
+  if (add) {
+    const parent = add.closest(".add").dataset.parent;
+    const list = parent ? (() => { const [l, i] = locate(cur.blocks, parent); return l[i].children; })() : cur.blocks;
+    list.push(newBlock(add.dataset.add)); save(); renderEditor(); return;
+  }
+  const act = e.target.closest("[data-a]");
+  if (!act) return;
+  const id = act.closest(".blk").dataset.id;
+  const [list, i] = locate(cur.blocks, id);
+  const a = act.dataset.a;
+  if (a === "up" && i > 0) [list[i - 1], list[i]] = [list[i], list[i - 1]];
+  if (a === "down" && i < list.length - 1) [list[i + 1], list[i]] = [list[i], list[i + 1]];
+  if (a === "dup") list.splice(i + 1, 0, clone({ blocks: [list[i]] }).blocks[0]);
+  if (a === "del") list.splice(i, 1);
+  save(); renderEditor();
+});
+$("editor").addEventListener("input", (e) => {
+  const f = e.target.dataset.f; if (!f) return;
+  const [list, i] = locate(cur.blocks, e.target.closest(".blk").dataset.id);
+  const b = list[i];
+  b[f] = f === "dir" ? e.target.value : Math.max(0, parseFloat(String(e.target.value).replace(",", ".")) || 0);
+  if (f === "speed") e.target.nextElementSibling.textContent = b.speed;
+  save(); updateMeta();
+});
+$("editor").addEventListener("change", (e) => {  // normalizza i numeri quando si esce dal campo
+  const f = e.target.dataset.f; if (!f || f === "dir") return;
+  const [list, i] = locate(cur.blocks, e.target.closest(".blk").dataset.id);
+  if (f === "times") list[i].times = Math.max(1, Math.round(list[i].times));
+  e.target.value = list[i][f]; save(); updateMeta();
+});
+
+function estimate(list) {
+  let t = 0;
+  for (const b of list) {
+    if (b.type === "wait") t += b.sec;
+    if (b.type === "rotate") t += b.deg / LEVEL_DPS[b.speed] + 0.3;
+    if (b.type === "home") t += 2;
+    if (b.type === "repeat") t += Math.max(1, Math.round(b.times)) * estimate(b.children);
+  }
+  return t;
+}
+function countBlocks(list) { return list.reduce((n, b) => n + 1 + (b.children ? countBlocks(b.children) : 0), 0); }
+function updateMeta() {
+  const t = Math.round(estimate(cur.blocks));
+  $("autoMeta").textContent = `${countBlocks(cur.blocks)} blocchi · durata stimata ${t >= 60 ? Math.floor(t / 60) + " min " : ""}${t % 60} s`;
+}
+
+/* ============================== Esecuzione ============================== */
+const runner = { active: false, cancel: false, start: null, wakeLock: null };
+class Stop extends Error {}
+async function waitMs(ms) {
+  const end = performance.now() + ms;
+  while (performance.now() < end) { if (runner.cancel) throw new Stop(); await sleep(Math.min(50, end - performance.now())); }
+}
+function highlight(id) {
+  document.querySelectorAll(".blk.run").forEach((el) => el.classList.remove("run"));
+  if (!id) return;
+  const el = document.querySelector(`.blk[data-id="${id}"]`);
+  if (el) { el.classList.add("run"); el.scrollIntoView({ block: "nearest", behavior: "smooth" }); }
+}
+async function runList(list, path) {
+  for (const b of list) {
+    if (runner.cancel) throw new Stop();
+    highlight(b.id);
+    if (b.type === "wait") {
+      $("runInfo").textContent = `${path}Attendi ${b.sec} s`;
+      await waitMs(b.sec * 1000);
+    } else if (b.type === "rotate") {
+      const dps = LEVEL_DPS[b.speed] || 17;
+      $("runInfo").textContent = `${path}Ruota ${DIRS[b.dir]} di ${b.deg}° (${dps}°/s)`;
+      const sy = b.dir === "right" ? 1 : b.dir === "left" ? -1 : 0;
+      const sp = b.dir === "up" ? 1 : b.dir === "down" ? -1 : 0;
+      let left = b.deg;
+      const maxChunk = Math.min(90, dps * 25);  // il campo tempo arriva al massimo a 25,5 s
+      while (left > 0.05) {
+        const step = Math.min(left, maxChunk), t = step / dps;
+        await gimbal.rel(sy * step, sp * step, t);
+        await waitMs(t * 1000 + 150);
+        left -= step;
+      }
+      await waitMs(150);
+    } else if (b.type === "home") {
+      $("runInfo").textContent = `${path}Torna alla posizione iniziale`;
+      const s = runner.start;
+      const dist = G.yaw == null ? 30 : Math.max(Math.abs(G.yaw - s.yaw), Math.abs(G.pitch - s.pitch));
+      const t = Math.min(25, Math.max(1, dist / 30));
+      await gimbal.abs(s.yaw, s.pitch, t);
+      await waitMs(t * 1000 + 300);
+    } else if (b.type === "repeat") {
+      const n = Math.max(1, Math.round(b.times));
+      for (let k = 1; k <= n; k++) await runList(b.children, `${path}Ripetizione ${k}/${n} · `);
+    }
+  }
+}
+async function startRun() {
+  if (!G.connected) { alert("Prima connetti il gimbal."); return; }
+  if (!cur.blocks.length) { alert("Aggiungi almeno un blocco."); return; }
+  runner.active = true; runner.cancel = false;
+  runner.start = { yaw: G.yaw ?? 0, pitch: G.pitch ?? 0 };
+  $("auto").classList.add("locked");
+  $("btnRun").textContent = "■ Stop"; $("btnRun").className = "danger";
+  try { runner.wakeLock = await navigator.wakeLock?.request("screen"); } catch {}
+  log(`Avvio "${cur.name}" da yaw ${fmtDeg(runner.start.yaw)}, pitch ${fmtDeg(runner.start.pitch)}`);
+  try {
+    await runList(cur.blocks, "");
+    finishRun("Completata ✓");
+  } catch (e) {
+    if (e instanceof Stop) finishRun(runner.reason || "Fermata");
+    else { log("Errore: " + e.message); finishRun("Errore: " + e.message); }
+  }
+}
+function stopRun(reason) { runner.reason = reason; runner.cancel = true; }
+async function finishRun(msg) {
+  if (runner.cancel) { await gimbal.rel(0, 0, 0.1); await gimbal.stop(); }
+  runner.active = false; runner.cancel = false; runner.reason = null;
+  highlight(null);
+  $("auto").classList.remove("locked");
+  $("btnRun").textContent = "▶ Esegui"; $("btnRun").className = "primary";
+  $("runInfo").textContent = msg;
+  try { await runner.wakeLock?.release(); } catch {}
+}
+$("btnRun").onclick = () => runner.active ? stopRun("Fermata") : startRun();
+
+/* ============================== Avvio ============================== */
+$("liveSpeed").value = store.get("liveSpeed", 5); $("liveSpeedLbl").textContent = $("liveSpeed").value;
+renderAll();
+showTab(store.get("tab", "live"));
+setStatus("off", navigator.bluetooth ? "Non connesso" : "Bluetooth non disponibile: apri con Bluefy");
+if (/[?&]demo/.test(location.search)) startDemo();
+window.__osmo = { rotatePacket, MODE, hex, DumlParser, crc8, crc16, duml };
+</script>
+</body>
+</html>
